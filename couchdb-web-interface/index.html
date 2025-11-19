@@ -1,0 +1,457 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CouchDB Claude Interface</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+
+        .chat-container {
+            width: 100%;
+            max-width: 800px;
+            height: 80vh;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        .chat-header {
+            background: #2c3e50;
+            color: white;
+            padding: 20px;
+            text-align: center;
+        }
+
+        .chat-header h1 {
+            font-size: 1.5em;
+            margin-bottom: 5px;
+        }
+
+        .chat-header p {
+            font-size: 0.9em;
+            opacity: 0.8;
+        }
+
+        .settings {
+            padding: 15px;
+            background: #ecf0f1;
+            border-bottom: 2px solid #ddd;
+        }
+
+        .settings input {
+            width: 100%;
+            padding: 10px;
+            border: 2px solid #ddd;
+            border-radius: 6px;
+            font-size: 14px;
+            margin-bottom: 8px;
+        }
+
+        .settings input:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        .chat-messages {
+            flex: 1;
+            overflow-y: auto;
+            padding: 20px;
+            background: #f8f9fa;
+        }
+
+        .message {
+            margin-bottom: 20px;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .message.user {
+            align-items: flex-end;
+        }
+
+        .message.assistant {
+            align-items: flex-start;
+        }
+
+        .message-content {
+            max-width: 80%;
+            padding: 12px 16px;
+            border-radius: 12px;
+            word-wrap: break-word;
+        }
+
+        .message.user .message-content {
+            background: #667eea;
+            color: white;
+        }
+
+        .message.assistant .message-content {
+            background: white;
+            border: 2px solid #ddd;
+            color: #2c3e50;
+        }
+
+        .message-content pre {
+            background: #2c3e50;
+            color: #0f0;
+            padding: 10px;
+            border-radius: 6px;
+            overflow-x: auto;
+            margin: 10px 0;
+            font-size: 12px;
+        }
+
+        .message.assistant .message-content pre {
+            background: #2c3e50;
+        }
+
+        .loading {
+            display: none;
+            padding: 12px 16px;
+            background: white;
+            border: 2px solid #ddd;
+            border-radius: 12px;
+            color: #667eea;
+        }
+
+        .loading.show {
+            display: block;
+        }
+
+        .chat-input {
+            padding: 20px;
+            background: white;
+            border-top: 2px solid #ddd;
+        }
+
+        .input-group {
+            display: flex;
+            gap: 10px;
+        }
+
+        .chat-input input {
+            flex: 1;
+            padding: 12px;
+            border: 2px solid #ddd;
+            border-radius: 6px;
+            font-size: 14px;
+        }
+
+        .chat-input input:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        .chat-input button {
+            padding: 12px 24px;
+            background: #667eea;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background 0.3s;
+        }
+
+        .chat-input button:hover {
+            background: #5568d3;
+        }
+
+        .chat-input button:disabled {
+            background: #95a5a6;
+            cursor: not-allowed;
+        }
+
+        .error {
+            background: #e74c3c !important;
+            color: white !important;
+        }
+
+        .label {
+            font-size: 12px;
+            color: #7f8c8d;
+            margin-bottom: 4px;
+        }
+    </style>
+</head>
+<body>
+    <div class="chat-container">
+        <div class="chat-header">
+            <h1>🤖 CouchDB Claude Assistant</h1>
+            <p>Ask me anything about your database</p>
+        </div>
+
+        <div class="settings">
+            <div class="label">Anthropic API Key</div>
+            <input type="password" id="apiKey" placeholder="sk-ant-...">
+            <div class="label">CouchDB URL</div>
+            <input type="text" id="couchUrl" value="https://admin:hackathon2025@osdreamt-hackathondb.apache-couchdb.auto.prod.osaas.io" placeholder="https://user:pass@your-couchdb.url">
+        </div>
+
+        <div class="chat-messages" id="messages">
+            <div class="message assistant">
+                <div class="message-content">
+                    Hello! I'm your CouchDB assistant. I can help you:
+                    <ul style="margin-top: 10px; margin-left: 20px;">
+                        <li>List all databases</li>
+                        <li>Query documents</li>
+                        <li>Create, update, or delete data</li>
+                        <li>Get database statistics</li>
+                        <li>Explain what's in your database</li>
+                    </ul>
+                    <br>
+                    Just ask me in plain English! For example: "What databases do I have?" or "Show me all documents in my-db"
+                </div>
+            </div>
+        </div>
+
+        <div class="loading" id="loading">Claude is thinking...</div>
+
+        <div class="chat-input">
+            <div class="input-group">
+                <input type="text" id="userInput" placeholder="Ask about your CouchDB..." onkeypress="handleKeyPress(event)">
+                <button onclick="sendMessage()" id="sendBtn">Send</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let conversationHistory = [];
+
+        async function sendMessage() {
+            const input = document.getElementById('userInput');
+            const apiKey = document.getElementById('apiKey').value.trim();
+            const couchUrl = document.getElementById('couchUrl').value.trim();
+            const message = input.value.trim();
+
+            if (!apiKey) {
+                alert('Please enter your Anthropic API key');
+                return;
+            }
+
+            if (!couchUrl) {
+                alert('Please enter your CouchDB URL');
+                return;
+            }
+
+            if (!message) return;
+
+            addMessage('user', message);
+            input.value = '';
+            document.getElementById('sendBtn').disabled = true;
+            document.getElementById('loading').classList.add('show');
+
+            try {
+                await processClaudeRequest(apiKey, couchUrl, message);
+            } catch (error) {
+                addMessage('assistant', `Error: ${error.message}`, true);
+            } finally {
+                document.getElementById('loading').classList.remove('show');
+                document.getElementById('sendBtn').disabled = false;
+            }
+        }
+
+        async function processClaudeRequest(apiKey, couchUrl, userMessage, previousMessages = []) {
+            const messages = previousMessages.length > 0 ? previousMessages : [
+                {
+                    role: 'user',
+                    content: `You are a helpful assistant that helps users interact with their CouchDB database at: ${couchUrl}
+
+When the user asks questions:
+1. Use the query_couchdb tool to fetch data from CouchDB
+2. Analyze the results and provide clear, helpful answers
+3. Format JSON responses in a readable way using markdown code blocks
+4. Suggest next steps or related queries when appropriate
+
+User question: ${userMessage}`
+                }
+            ];
+
+            const response = await fetch('/api/chat', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    apiKey: apiKey,
+                    messages: messages,
+                    tools: [
+                        {
+                            name: 'query_couchdb',
+                            description: 'Execute HTTP requests to CouchDB. Use this to list databases, get documents, create/update/delete data, and perform any CouchDB operations.',
+                            input_schema: {
+                                type: 'object',
+                                properties: {
+                                    method: {
+                                        type: 'string',
+                                        enum: ['GET', 'POST', 'PUT', 'DELETE'],
+                                        description: 'HTTP method'
+                                    },
+                                    path: {
+                                        type: 'string',
+                                        description: 'CouchDB path (e.g., /_all_dbs, /mydb/_all_docs, /mydb/docid)'
+                                    },
+                                    body: {
+                                        type: 'string',
+                                        description: 'JSON body for POST/PUT requests'
+                                    }
+                                },
+                                required: ['method', 'path']
+                            }
+                        }
+                    ]
+                })
+            });
+
+            const data = await response.json();
+
+            if (!response.ok) {
+                throw new Error(data.error?.message || 'API request failed');
+            }
+
+            // Check if Claude wants to use a tool
+            if (data.stop_reason === 'tool_use') {
+                const toolUse = data.content.find(block => block.type === 'tool_use');
+
+                if (toolUse && toolUse.name === 'query_couchdb') {
+                    const { method, path, body } = toolUse.input;
+
+                    try {
+                        const url = couchUrl + path;
+                        const fetchOptions = {
+                            method: method,
+                            headers: {
+                                'Content-Type': 'application/json'
+                            }
+                        };
+
+                        if (body) {
+                            fetchOptions.body = body;
+                        }
+
+                        const dbResponse = await fetch('/api/couchdb', {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json'
+                            },
+                            body: JSON.stringify({
+                                url: url,
+                                method: method,
+                                body: body
+                            })
+                        });
+                        const dbData = await dbResponse.json();
+
+                        // Continue conversation with tool result
+                        const newMessages = [
+                            ...messages,
+                            {
+                                role: 'assistant',
+                                content: data.content
+                            },
+                            {
+                                role: 'user',
+                                content: [
+                                    {
+                                        type: 'tool_result',
+                                        tool_use_id: toolUse.id,
+                                        content: JSON.stringify(dbData)
+                                    }
+                                ]
+                            }
+                        ];
+
+                        await processClaudeRequest(apiKey, couchUrl, userMessage, newMessages);
+
+                    } catch (error) {
+                        addMessage('assistant', `Error querying database: ${error.message}`, true);
+                    }
+                }
+            } else {
+                // Claude has finished and provided a text response
+                const textContent = data.content.find(block => block.type === 'text');
+                if (textContent) {
+                    addMessage('assistant', textContent.text);
+                }
+            }
+        }
+
+        function addMessage(role, content, isError = false) {
+            const messagesDiv = document.getElementById('messages');
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `message ${role}`;
+
+            const contentDiv = document.createElement('div');
+            contentDiv.className = `message-content ${isError ? 'error' : ''}`;
+
+            // Format JSON in code blocks
+            let formattedContent = content;
+
+            // Convert markdown code blocks to HTML
+            formattedContent = formattedContent.replace(/```json\n([\s\S]*?)\n```/g, (match, json) => {
+                return `<pre>${escapeHtml(json)}</pre>`;
+            });
+
+            formattedContent = formattedContent.replace(/```\n([\s\S]*?)\n```/g, (match, code) => {
+                return `<pre>${escapeHtml(code)}</pre>`;
+            });
+
+            // Convert **bold** to <strong>
+            formattedContent = formattedContent.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+
+            // Convert newlines to <br>
+            formattedContent = formattedContent.replace(/\n/g, '<br>');
+
+            contentDiv.innerHTML = formattedContent;
+
+            messageDiv.appendChild(contentDiv);
+            messagesDiv.appendChild(messageDiv);
+            messagesDiv.scrollTop = messagesDiv.scrollHeight;
+        }
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        function handleKeyPress(event) {
+            if (event.key === 'Enter') {
+                sendMessage();
+            }
+        }
+
+        // Load API key from localStorage if available
+        window.onload = function() {
+            const savedApiKey = localStorage.getItem('anthropic_api_key');
+            if (savedApiKey) {
+                document.getElementById('apiKey').value = savedApiKey;
+            }
+
+            // Save API key to localStorage when it changes
+            document.getElementById('apiKey').addEventListener('change', function() {
+                localStorage.setItem('anthropic_api_key', this.value);
+            });
+        };
+    </script>
+</body>
+</html>
